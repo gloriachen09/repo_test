@@ -1,0 +1,17 @@
+name: Sync to Gitee 
+on: 
+  push: 
+    branches: [ main ] 
+# 监听 main 分支的 push 事件 
+jobs: 
+  sync: 
+    runs-on: ubuntu-latest 
+    steps: 
+    - name: Checkout code 
+      uses: actions/checkout@v4 
+    - name: Mirror to GitCode 
+      run: | 
+        git remote add gitee https://${{ secrets.GITCODE_TOKEN }}@gitee.com:gloria-chen/repo_test.git
+        git push --mirror gitee 
+      env: 
+        GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
