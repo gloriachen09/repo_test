@@ -10,7 +10,7 @@ jobs:
     # Step 3: 只推到 Gitee，不影响 GitHub
     - name: Push to Gitee only
       env:
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
       run: git clone https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git gitee_repo
 
     - name: Add GitHub remote and fetch
