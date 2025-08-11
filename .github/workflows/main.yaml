@@ -16,13 +16,13 @@ jobs:
     - name: Add GitHub remote and fetch
       run: |
           cd gitee_repo
-          git branch -a
-          git log --oneline github/main | head
-          git log --oneline origin/main | head
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add github https://github.com/gloriachen09/repo_test.git
           git fetch github
+          git branch -a
+          git log --oneline github/main | head
+          git log --oneline origin/main | head
           # 用Github代码覆盖所有文件，但保留指定文件（先用本地Gitee版本覆盖回）
           git checkout github/main -- .
           git checkout origin/main -- ameba-toolchain-asdk-10.3.1.cmake
