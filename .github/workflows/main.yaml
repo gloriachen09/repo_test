@@ -7,13 +7,40 @@ jobs:
   sync: 
     runs-on: ubuntu-latest 
     steps: 
-    - name: Checkout code 
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-    - name: Mirror to Gitee
-      env: 
-        GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-      run: | 
-        git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
-        git push --mirror gitee 
+    # Step 3: 只推到 Gitee，不影响 GitHub
+    - name: Push to Gitee only
+      env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      run: git clone https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git gitee_repo
+
+    - name: Add GitHub remote and fetch
+      run: |
+          cd gitee_repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add github https://github.com/gloriachen09/repo_test.git
+          git fetch github
+          # 用Github代码覆盖所有文件，但保留指定文件（先用本地Gitee版本覆盖回）
+          git checkout github/main -- .
+          git checkout origin/main -- ameba-toolchain-asdk-10.3.1.cmake
+          git checkout origin/main -- ameba-toolchain-asdk-12.3.1.cmake
+
+    - name: Patch cmake if needed
+      run: |
+          cd gitee_repo
+          need_commit=0
+          if ! grep -q 'if(1)' ameba-toolchain-asdk-10.3.1.cmake; then
+            sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-10.3.1.cmake
+            git add ameba-toolchain-asdk-10.3.1.cmake
+            need_commit=1
+          fi
+          if ! grep -q 'if(1)' ameba-toolchain-asdk-12.3.1.cmake; then
+            sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-12.3.1.cmake
+            git add ameba-toolchain-asdk-12.3.1.cmake
+            need_commit=1
+          fi
+          if [ "$need_commit" -eq 1 ] ; then
+            git commit -m "Gitee: replaced USE_ALIYUN_URL with if(1)"
+          fi
+          git push origin main
+
