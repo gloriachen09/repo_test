@@ -13,5 +13,5 @@ jobs:
       env: 
         GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
       run: | 
-        git remote add gitee https://gloria_chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
+        git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
         git push --mirror gitee 
