@@ -25,8 +25,6 @@ jobs:
           git log --oneline origin/main | head
           # 用Github代码覆盖所有文件，但保留指定文件（先用本地Gitee版本覆盖回）
           git checkout github/main -- .
-          git checkout origin/main -- ameba-toolchain-asdk-10.3.1.cmake
-          git checkout origin/main -- ameba-toolchain-asdk-12.3.1.cmake
 
     - name: Patch cmake if needed
       run: |
