@@ -9,9 +9,9 @@ jobs:
     steps: 
     - name: Checkout code 
       uses: actions/checkout@v4 
-    - name: Mirror to GitCode 
+    - name: Mirror to Gitee 
       run: | 
-        git remote add gitee https://${{ secrets.GITCODE_TOKEN }}@gitee.com:gloria-chen/repo_test.git
+        git remote add gitee https://${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
         git push --mirror gitee 
       env: 
-        GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+        GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
