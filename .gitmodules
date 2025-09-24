@@ -34,3 +34,7 @@
 [submodule "component/tflite_micro"]
 	path = component/tflite_micro
 	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
+	branch = main
+[submodule "ameba-tflite-micro"]
+	path = ameba-tflite-micro
+	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
