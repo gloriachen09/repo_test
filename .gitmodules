@@ -31,10 +31,3 @@
 [submodule "component/aivoice"]
 	path = component/aivoice
 	url = https://github.com/Ameba-AIoT/ameba-aivoice.git
-
-[submodule "component/tflite_micro"]
-	path = component/tflite_micro
-	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
-[submodule "ameba-audio"]
-	path = ameba-audio
-	url = https://github.com/Ameba-AIoT/ameba-audio.git
