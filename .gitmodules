@@ -1,0 +1,37 @@
+#
+# All the relative URL paths are intended to be GitHub ones
+#
+# Submodules SBOM information
+# ---------------------------
+# Submodules, which are used directly and not forked into ameba-rtos namespace should
+# contain SBOM information here. Other submodules should have the SBOM manifest file
+# included in the root of their project's repository.
+#
+# The sbom-hash entry records the submodule's checkout SHA as presented in git-tree
+# commit object. For example audio submodule
+#
+# $ git ls-tree HEAD component/audio
+#
+# The hash can be also obtained with git submodule command
+#
+# $ git submodule status component/audio
+#
+# The submodule SHA recorded here has to match with SHA, which is presented in git-tree.
+# This is checked by CI. Also please don't forget to update the submodule version
+# if you are changing the sbom-hash. This is important for SBOM generation.
+
+[submodule "component/audio"]
+	path = component/audio
+	url = https://github.com/Ameba-AIoT/ameba-audio.git
+
+[submodule "component/ui"]
+	path = component/ui
+	url = https://github.com/Ameba-AIoT/ameba-ui.git
+
+[submodule "component/aivoice"]
+	path = component/aivoice
+	url = https://github.com/Ameba-AIoT/ameba-aivoice.git
+
+[submodule "component/tflite_micro"]
+	path = component/tflite_micro
+	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
