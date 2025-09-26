@@ -38,3 +38,7 @@
 [submodule "ameba-tflite-micro"]
 	path = ameba-tflite-micro
 	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
+	branch = main
+[submodule "test-repo"]
+	path = test-repo
+	url = https://github.com/gloriachen09/test-repo.git
