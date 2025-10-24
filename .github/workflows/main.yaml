@@ -1,46 +1,59 @@
 name: Sync to Gitee 
-on: 
-  push: 
-    branches: [ main ] 
-# 监听 main 分支的 push 事件 
-jobs: 
-  sync: 
-    runs-on: ubuntu-latest 
-    steps: 
-    - name: Checkout code 
+on:
+  push:
+    branches:
+      - release/v1.1
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code from GitHub
       uses: actions/checkout@v4
       with:
+        ref: release/v1.1
         fetch-depth: 0
+    - name: Debug GITEE_TOKEN
+      run: echo "TOKEN_LENGTH=${#GITEE_TOKEN}"
+      env:
+        GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
     - name: Mirror to Gitee
-      env: 
-        GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-      run: | 
+      env:
+        GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+      run: |
         git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
-        git push --mirror gitee 
-    # Step 3: 只推到 Gitee，不影响 GitHub
+        git push gitee HEAD:refs/heads/release/v1.1 --force
+
     - name: Push to Gitee only
       env:
-          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
       run: git clone https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git gitee_repo
-
     - name: Patch cmake if needed
       run: |
           cd gitee_repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          if git show-ref --verify --quiet refs/heads/release/v1.1; then
+              echo "release/v1.1 exists"
+              git checkout release/v1.1
+          else
+              git checkout remotes/origin/release/v1.1 -b release/v1.1
+              echo "create release/v1.1 from origin/release/v1.1"
+          fi
           need_commit=0
-          if ! grep -q 'if(1)' ameba-toolchain-asdk-10.3.1.cmake; then
-          sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-10.3.1.cmake
-            git add ameba-toolchain-asdk-10.3.1.cmake
+          if ! grep -q 'if(1)' cmake/toolchain/ameba-toolchain-asdk-10.3.1.cmake; then
+            sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' cmake/toolchain/ameba-toolchain-asdk-10.3.1.cmake
+            git add cmake/toolchain/ameba-toolchain-asdk-10.3.1.cmake
             need_commit=1
           fi
-          if ! grep -q 'if(1)' ameba-toolchain-asdk-12.3.1.cmake; then
-            sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-12.3.1.cmake
-            git add ameba-toolchain-asdk-12.3.1.cmake
+          if ! grep -q 'if(1)' cmake/toolchain/ameba-toolchain-asdk-12.3.1.cmake; then
+            sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' cmake/toolchain/ameba-toolchain-asdk-12.3.1.cmake
+            git add cmake/toolchain/ameba-toolchain-asdk-12.3.1.cmake
             need_commit=1
           fi
-          if [ "$need_commit" -eq 1 ] ; then
-            git commit -m "Gitee: replaced USE_ALIYUN_URL with if(1)"
-          fi
-          git push origin main
 
+          if [ "$need_commit" -eq 1 ] ; then
+            git commit -m "automated sync from github"
+          fi
+
+          git push origin release/v1.1 
