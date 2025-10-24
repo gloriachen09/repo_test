@@ -10,13 +10,14 @@ jobs:
     - name: Checkout code from Github
       uses: actions/checkout@v4
       with:
+        ref: main
         fetch-depth: 0
     - name: Mirror to Gitee
       env: 
         GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
       run: | 
         git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
-        git push --mirror gitee 
+        git push gitee HEAD:refs/heads/main --force 
     # Step 3: 只推到 Gitee，不影响 GitHub
     - name: Push to Gitee only
       env:
