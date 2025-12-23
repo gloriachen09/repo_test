@@ -39,7 +39,7 @@ jobs:
           sed -i 's/github.com/gitee.com/g' .gitmodules
           git add .gitmodules
           need_commit=1
-          sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' cmake/toolchain/ameba-toolchain-asdk-10.3.1.cmake
+          sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-10.3.1.cmake
           if ! grep -q 'if(1)' ameba-toolchain-asdk-10.3.1.cmake; then
           sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-10.3.1.cmake
             git add ameba-toolchain-asdk-10.3.1.cmake
