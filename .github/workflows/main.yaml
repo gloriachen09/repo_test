@@ -36,7 +36,7 @@ jobs:
               git checkout remotes/origin/main -b main
               echo "create main from origin/main"
           fi
-          sed -i 's/github/gitee/g' .gitmodules
+          sed -i 's/github.com/gitee.com/g' .gitmodules
           git add .gitmodules
           need_commit=1
           sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' cmake/toolchain/ameba-toolchain-asdk-10.3.1.cmake
