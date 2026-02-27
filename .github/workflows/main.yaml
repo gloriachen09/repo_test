@@ -18,40 +18,4 @@ jobs:
       run: | 
         git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
         git push gitee HEAD:refs/heads/main --force 
-    # Step 3: 只推到 Gitee，不影响 GitHub
-    - name: Push to Gitee only
-      env:
-          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-      run: git clone https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git gitee_repo
-
-    - name: Patch cmake if needed
-      run: |
-          cd gitee_repo
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git show-ref --verify --quiet refs/heads/main; then
-              echo "main exists"
-              git checkout main
-          else
-              git checkout remotes/origin/main -b main
-              echo "create main from origin/main"
-          fi
-          sed -i 's/github.com\/Ameba-AIoT/gitee.com\/ameba-aiot/g' .gitmodules
-          git add .gitmodules
-          need_commit=1
-          sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-10.3.1.cmake
-          if ! grep -q 'if(1)' ameba-toolchain-asdk-10.3.1.cmake; then
-          sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-10.3.1.cmake
-            git add ameba-toolchain-asdk-10.3.1.cmake
-            need_commit=1
-          fi
-          if ! grep -q 'if(1)' ameba-toolchain-asdk-12.3.1.cmake; then
-            sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' ameba-toolchain-asdk-12.3.1.cmake
-            git add ameba-toolchain-asdk-12.3.1.cmake
-            need_commit=1
-          fi
-          if [ "$need_commit" -eq 1 ] ; then
-            git commit -m "Gitee: replaced USE_ALIYUN_URL with if(1)"
-          fi
-          git push origin main
 
