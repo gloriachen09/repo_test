@@ -1,47 +1,204 @@
-name: Sync to Gitee 
-on: 
-  push: 
-    branches: [ main ] 
-# 监听 main 分支的 push 事件 
-jobs: 
-  sync: 
-    runs-on: ubuntu-latest 
-    steps: 
-    - name: Checkout code from Github
-      uses: actions/checkout@v4
-      with:
-        ref: main
-        fetch-depth: 1
+name: Sync to Gitee
 
-    - name: Configure Git
-      run: |
-        git config user.name "github-actions"
-        git config user.email "github-actions@users.noreply.github.com"
-    
-    - name: Apply patches
-      run: |
-        sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
-        
-        for file in cmake/toolchain/ameba-toolchain-*.cmake; do
-          [ -f "$file" ] && sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
-        done
-        
-        if ! git diff --quiet; then
-          git add .
-          git commit --amend --no-edit  # 🔑 修改最新提交，不创建新提交
-        fi
-    
-    - name: Incremental push to Gitee
-      env:
-        GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-      run: |
-        git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
-        
-        # 🔑 只推送新提交（不使用 --force）
-        git push gitee HEAD:refs/heads/main || {
-          # 如果冲突，则拉取并合并
-          git fetch gitee main
-          git rebase gitee/main
-          git push gitee HEAD:refs/heads/main
-        }
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # 允许手动触发
 
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # ========================================
+      # 1. 从 GitHub 检出代码（保留完整历史）
+      # ========================================
+      - name: Checkout GitHub Repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0  # 获取完整历史
+          submodules: false  # 暂不拉取子模块
+
+      # ========================================
+      # 2. 配置 Git 用户信息
+      # ========================================
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global core.quotepath false
+          git config --global i18n.commitencoding utf-8
+
+      # ========================================
+      # 3. 修改文件（在推送前）
+      # ========================================
+      - name: Patch Files for Gitee
+        run: |
+          echo "📝 修改 .gitmodules 文件..."
+          if [ -f .gitmodules ]; then
+            sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
+            echo "✅ .gitmodules 已更新"
+          else
+            echo "⚠️  .gitmodules 不存在"
+          fi
+          
+          echo ""
+          echo "📝 修改 CMake 工具链文件..."
+          
+          # 定义要修改的文件列表
+          CMAKE_FILES=(
+            "ameba-toolchain-asdk-10.3.1.cmake"
+            "ameba-toolchain-asdk-12.3.1.cmake"
+          )
+          
+          MODIFIED=0
+          
+          for file in "${CMAKE_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              # 检查是否已经修改过
+              if ! grep -q 'if(1)' "$file"; then
+                echo "  修改: $file"
+                sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
+                MODIFIED=1
+              else
+                echo "  跳过: $file (已修改)"
+              fi
+            else
+              echo "  ⚠️  文件不存在: $file"
+            fi
+          done
+          
+          # 检查是否有文件被修改
+          if git diff --quiet; then
+            echo ""
+            echo "✅ 没有文件需要修改"
+            echo "HAS_CHANGES=false" >> $GITHUB_ENV
+          else
+            echo ""
+            echo "✅ 文件修改完成"
+            echo "HAS_CHANGES=true" >> $GITHUB_ENV
+            
+            # 显示修改内容
+            echo ""
+            echo "📊 修改的文件列表:"
+            git diff --name-only
+            
+            echo ""
+            echo "📄 修改详情:"
+            git diff --stat
+          fi
+
+      # ========================================
+      # 4. 提交修改（仅在有变更时）
+      # ========================================
+      - name: Commit Changes
+        if: env.HAS_CHANGES == 'true'
+        run: |
+          echo "💾 提交修改到本地仓库..."
+          git add -A
+          
+          # 创建详细的提交信息
+          cat > commit_message.txt << 'EOF'
+          chore: automated sync from GitHub to Gitee
+
+          本次同步修改：
+          - 更新 .gitmodules 使用 Gitee 镜像
+          - 修改 CMake 工具链配置使用阿里云下载源
+          
+          Sync Time: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          GitHub SHA: ${{ github.sha }}
+          EOF
+          
+          git commit -F commit_message.txt
+          rm commit_message.txt
+          
+          echo "✅ 提交完成"
+          git log -1 --oneline
+
+      # ========================================
+      # 5. 推送到 Gitee（强制镜像 + 修改后的 master）
+      # ========================================
+      - name: Push to Gitee
+        env:
+          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITEE_USERNAME: gloria-chen
+          GITEE_REPO: gloria-chen/repo_test
+        run: |
+          echo "🔗 配置 Gitee 远程仓库..."
+          GITEE_URL="https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITEE_REPO}.git"
+          
+          # 添加 Gitee 远程仓库
+          if git remote | grep -q '^gitee$'; then
+            git remote set-url gitee "$GITEE_URL"
+          else
+            git remote add gitee "$GITEE_URL"
+          fi
+          
+          echo ""
+          echo "⬆️  推送到 Gitee main 分支..."
+          
+          # 推送修改后的 main 分支
+          git push gitee main --force
+          
+          # 如果需要同步所有分支和标签，取消下面注释
+          # git push gitee --all --force
+          # git push gitee --tags --force
+          
+          echo ""
+          echo "✅ 推送完成"
+
+      # ========================================
+      # 6. 清理和验证
+      # ========================================
+      - name: Cleanup and Verify
+        if: always()
+        run: |
+          echo "🧹 清理敏感信息..."
+          git remote remove gitee 2>/dev/null || true
+          
+          echo ""
+          echo "📊 同步摘要:"
+          echo "  GitHub Commit: ${{ github.sha }}"
+          echo "  Branch: ${{ github.ref_name }}"
+          echo "  Modified Files: ${{ env.HAS_CHANGES }}"
+          echo ""
+          echo "✅ 同步流程完成"
+
+      # ========================================
+      # 7. 可选：清理 Gitee 仓库中的孤立对象
+      # ========================================
+      - name: Cleanup Gitee Repository (Optional)
+        if: github.event_name == 'workflow_dispatch'  # 仅手动触发时执行
+        env:
+          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITEE_USERNAME: gloria-chen
+          GITEE_REPO: gloria-chen/repo_test
+        run: |
+          echo "🧹 执行 Gitee 仓库清理（可选步骤）..."
+          
+          # 克隆镜像仓库
+          GITEE_URL="https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITEE_REPO}.git"
+          git clone --mirror "$GITEE_URL" gitee_mirror
+          
+          cd gitee_mirror
+          
+          echo "📊 清理前大小:"
+          du -sh .
+          
+          # 清理孤立对象
+          git reflog expire --expire=now --all
+          git gc --prune=now --aggressive
+          
+          echo ""
+          echo "📊 清理后大小:"
+          du -sh .
+          
+          # 推送清理后的仓库
+          git push --mirror "$GITEE_URL"
+          
+          cd ..
+          rm -rf gitee_mirror
+          
+          echo "✅ 清理完成"
