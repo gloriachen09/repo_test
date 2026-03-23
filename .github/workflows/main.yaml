@@ -11,11 +11,42 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: main
-        fetch-depth: 0
+        fetch-depth: 1
     - name: Mirror to Gitee
       env: 
         GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
       run: | 
         git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
         git push gitee HEAD:refs/heads/main --force 
+    - name: Configure Git
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@users.noreply.github.com"
+    
+    - name: Apply patches
+      run: |
+        sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
+        
+        for file in cmake/toolchain/ameba-toolchain-*.cmake; do
+          [ -f "$file" ] && sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
+        done
+        
+        if ! git diff --quiet; then
+          git add .
+          git commit --amend --no-edit  # 🔑 修改最新提交，不创建新提交
+        fi
+    
+    - name: Incremental push to Gitee
+      env:
+        GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+      run: |
+        git remote add gitee https://gloria-chen:${GITEE_TOKEN}@gitee.com/gloria-chen/repo_test.git
+        
+        # 🔑 只推送新提交（不使用 --force）
+        git push gitee HEAD:refs/heads/main || {
+          # 如果冲突，则拉取并合并
+          git fetch gitee main
+          git rebase gitee/main
+          git push gitee HEAD:refs/heads/main
+        }
 
