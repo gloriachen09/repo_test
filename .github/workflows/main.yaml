@@ -192,5 +192,104 @@ jobs:
           echo "✅ 提交完成"
           git log -1 --oneline
 
-      # 7-10. 其余步骤保持不变...
-      # (Smart Sync, Verify, Cleanup 等)
+      # ========================================
+      # 7. 同步其他分支和标签（可选）
+      # ========================================
+      - name: Sync Tags and Other Branches (Optional)
+        if: success()
+        continue-on-error: true
+        run: |
+          echo "🏷️  同步标签到 Gitee..."
+          git push gitee --tags 2>/dev/null || echo "⚠️  没有新标签或推送失败"
+          
+          # 如果需要同步其他分支，取消下面注释
+          # echo ""
+          # echo "🌿 同步其他分支到 Gitee..."
+          # for branch in $(git branch -r | grep -v '\->' | grep 'origin/' | sed 's/origin\///'); do
+          #   if [ "$branch" != "main" ]; then
+          #     echo "  同步分支: $branch"
+          #     git checkout $branch
+          #     git push gitee $branch 2>/dev/null || echo "  ⚠️  分支 $branch 同步失败"
+          #   fi
+          # done
+
+      # ========================================
+      # 8. 验证同步结果
+      # ========================================
+      - name: Verify Sync Result
+        if: success()
+        run: |
+          echo "📊 验证同步结果..."
+          
+          # 获取最新的远程信息
+          git fetch gitee main
+          
+          LOCAL_SHA=$(git rev-parse HEAD)
+          REMOTE_SHA=$(git rev-parse gitee/main)
+          
+          echo ""
+          echo "GitHub HEAD: $LOCAL_SHA"
+          echo "Gitee HEAD:  $REMOTE_SHA"
+          
+          if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
+            echo ""
+            echo "✅ 同步验证成功！HEAD 一致"
+          else
+            echo ""
+            echo "⚠️  HEAD 不一致，但可能是正常情况（如果 Gitee 有独立提交）"
+          fi
+
+      # ========================================
+      # 9. 清理和摘要
+      # ========================================
+      - name: Cleanup and Summary
+        if: always()
+        run: |
+          echo "🧹 清理敏感信息..."
+          git remote remove gitee 2>/dev/null || true
+          
+          echo ""
+          echo "📊 同步摘要:"
+          echo "  GitHub Commit: ${{ github.sha }}"
+          echo "  Branch: ${{ github.ref_name }}"
+          echo "  Modified Files: ${{ env.HAS_CHANGES }}"
+          echo "  Gitee Existed: ${{ env.GITEE_EXISTS }}"
+          echo ""
+          echo "✅ 同步流程完成"
+
+      # ========================================
+      # 10. 可选：定期执行 Gitee GC（仅手动触发）
+      # ========================================
+      - name: Gitee Repository Maintenance (Optional)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          GITEE_USERNAME: gloria-chen
+          GITEE_REPO: gloria-chen/repo_test
+        run: |
+          echo "🧹 执行 Gitee 仓库维护（仅手动触发时）..."
+          
+          GITEE_URL="https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITEE_REPO}.git"
+          
+          # 克隆镜像仓库
+          git clone --mirror "$GITEE_URL" gitee_mirror
+          cd gitee_mirror
+          
+          echo "📊 维护前大小:"
+          du -sh . 2>/dev/null || echo "无法获取大小"
+          
+          # 清理操作
+          git reflog expire --expire=30.days --all
+          git gc --prune=now --aggressive
+          
+          echo ""
+          echo "📊 维护后大小:"
+          du -sh . 2>/dev/null || echo "无法获取大小"
+          
+          # 推送清理后的仓库（非强制）
+          git push --mirror "$GITEE_URL" || echo "⚠️  推送失败"
+          
+          cd ..
+          rm -rf gitee_mirror
+          
+          echo "✅ 维护完成"
