@@ -11,7 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      # 1. Checkout
+      # ========================================
+      # 1. 从 GitHub 检出代码（保留完整历史）
+      # ========================================
       - name: Checkout GitHub Repository
         uses: actions/checkout@v4
         with:
@@ -19,7 +21,9 @@ jobs:
           fetch-depth: 0
           submodules: false
 
-      # 2. Configure Git
+      # ========================================
+      # 2. 配置 Git 用户信息
+      # ========================================
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
@@ -27,7 +31,9 @@ jobs:
           git config --global core.quotepath false
           git config --global i18n.commitencoding utf-8
 
-      # 3. Add Gitee Remote
+      # ========================================
+      # 3. 添加 Gitee 远程仓库并拉取最新状态
+      # ========================================
       - name: Add Gitee Remote and Fetch
         env:
           GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
@@ -54,7 +60,9 @@ jobs:
             echo "GITEE_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      # 4. Check if Files Already Patched (NEW!)
+      # ========================================
+      # 4. 检查 Gitee 文件是否已修改（关键改进！）
+      # ========================================
       - name: Check if Gitee Files Already Patched
         if: env.GITEE_EXISTS == 'true'
         run: |
@@ -68,14 +76,14 @@ jobs:
             echo "📝 检查 .gitmodules..."
             
             if git show gitee/main:.gitmodules 2>/dev/null | grep -q "gitee.com/ameba-aiot"; then
-              echo "  ✅ .gitmodules 已使用 Gitee 镜像，跳过修改"
+              echo "  ✅ Gitee 上的 .gitmodules 已使用 Gitee 镜像，跳过修改"
             else
-              echo "  ⚠️  .gitmodules 仍使用 GitHub URL，需要修改"
+              echo "  ⚠️  Gitee 上的 .gitmodules 仍使用 GitHub URL，需要修改"
               NEED_PATCH=true
             fi
           fi
           
-          # 检查 CMake 文件
+          # 检查 CMake 工具链文件
           echo ""
           echo "📝 检查 CMake 工具链文件..."
           
@@ -87,9 +95,9 @@ jobs:
           for file in "${CMAKE_FILES[@]}"; do
             if [ -f "$file" ]; then
               if git show "gitee/main:$file" 2>/dev/null | grep -q "if(1)"; then
-                echo "  ✅ $file 已使用阿里云源，跳过修改"
+                echo "  ✅ Gitee 上的 $file 已使用阿里云源，跳过修改"
               else
-                echo "  ⚠️  $file 仍使用条件判断，需要修改"
+                echo "  ⚠️  Gitee 上的 $file 仍使用条件判断，需要修改"
                 NEED_PATCH=true
               fi
             fi
@@ -98,17 +106,24 @@ jobs:
           # 设置环境变量
           echo ""
           if [ "$NEED_PATCH" = true ]; then
-            echo "📌 结论: Gitee 文件需要修改"
+            echo "📌 结论: Gitee 上的文件需要修改"
             echo "GITEE_NEED_PATCH=true" >> $GITHUB_ENV
           else
-            echo "✅ 结论: Gitee 文件已是最新，无需修改"
+            echo "✅ 结论: Gitee 上的文件已是最新版本，无需修改"
             echo "GITEE_NEED_PATCH=false" >> $GITHUB_ENV
           fi
 
-      # 5. Patch Files (Modified!)
-      - name: Patch Files for Gitee
+      # ========================================
+      # 5. 在独立分支上修改文件（仅在需要时）
+      # ========================================
+      - name: Create Patched Branch for Gitee
         if: env.GITEE_EXISTS == 'false' || env.GITEE_NEED_PATCH == 'true'
         run: |
+          echo "🌿 创建用于 Gitee 的专用分支..."
+          
+          # 创建临时分支用于修改
+          git checkout -b gitee-patched
+          
           echo "📝 开始修改文件..."
           
           # 修改 .gitmodules
@@ -122,11 +137,9 @@ jobs:
               sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
               echo "  ✅ .gitmodules 已更新"
             fi
-          else
-            echo "  ⚠️  .gitmodules 不存在"
           fi
           
-          # 修改 CMake 文件
+          # 修改 CMake 工具链文件
           echo ""
           echo "📝 修改 CMake 工具链文件..."
           
@@ -148,10 +161,10 @@ jobs:
             fi
           done
           
-          # 检查修改结果
+          # 检查是否有文件被修改
           if git diff --quiet; then
             echo ""
-            echo "✅ 没有文件需要修改"
+            echo "⚠️  没有文件需要修改（可能已手动修改）"
             echo "HAS_CHANGES=false" >> $GITHUB_ENV
           else
             echo ""
@@ -165,53 +178,119 @@ jobs:
             echo ""
             echo "📄 修改详情:"
             git diff --stat
-          fi
+            
+            # 提交修改
+            git add -A
+            COMMIT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+            cat > commit_message.txt << EOF
+          chore: automated patch for Gitee sync
 
-      # 6. Commit Changes
-      - name: Commit Changes
-        if: env.HAS_CHANGES == 'true'
-        run: |
-          echo "💾 提交修改到本地仓库..."
-          git add -A
-          
-          COMMIT_TIME=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          cat > commit_message.txt << EOF
-          chore: automated sync from GitHub to Gitee
-
-          本次同步修改：
+          本次修改：
           - 更新 .gitmodules 使用 Gitee 镜像
           - 修改 CMake 工具链配置使用阿里云下载源
           
-          Sync Time: ${COMMIT_TIME}
-          GitHub SHA: ${{ github.sha }}
+          Patch Time: ${COMMIT_TIME}
+          Base Commit: ${{ github.sha }}
           EOF
-          
-          git commit -F commit_message.txt
-          rm commit_message.txt
-          
-          echo "✅ 提交完成"
-          git log -1 --oneline
+            
+            git commit -F commit_message.txt
+            rm commit_message.txt
+            
+            echo ""
+            echo "✅ 修改已提交到 gitee-patched 分支"
+            git log -1 --oneline
+          fi
 
       # ========================================
-      # 7. 同步其他分支和标签（可选）
+      # 6. 智能同步到 Gitee（非强推）
       # ========================================
-      - name: Sync Tags and Other Branches (Optional)
+      - name: Smart Sync to Gitee (Non-Force)
+        env:
+          GITEE_EXISTS: ${{ env.GITEE_EXISTS }}
+          GITEE_NEED_PATCH: ${{ env.GITEE_NEED_PATCH }}
+          HAS_CHANGES: ${{ env.HAS_CHANGES }}
+        run: |
+          echo "⬆️  开始同步到 Gitee..."
+          
+          # 确定要推送的分支
+          if [ "$GITEE_NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
+            PUSH_BRANCH="gitee-patched"
+            echo "📦 推送分支: gitee-patched（包含 Gitee 专用修改）"
+          elif [ "$GITEE_EXISTS" = "false" ] && [ "$HAS_CHANGES" = "true" ]; then
+            PUSH_BRANCH="gitee-patched"
+            echo "📦 推送分支: gitee-patched（首次同步，包含修改）"
+          else
+            PUSH_BRANCH="main"
+            echo "📦 推送分支: main（直接同步，无需修改）"
+            git checkout main
+          fi
+          
+          echo ""
+          
+          if [ "$GITEE_EXISTS" = "true" ]; then
+            echo "📊 检查 Gitee 远程状态..."
+            
+            # 获取本地和远程的 SHA
+            LOCAL_SHA=$(git rev-parse HEAD)
+            REMOTE_SHA=$(git rev-parse gitee/main 2>/dev/null || echo "")
+            
+            echo "  本地 HEAD: $LOCAL_SHA"
+            echo "  远程 HEAD: $REMOTE_SHA"
+            
+            if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
+              echo ""
+              echo "✅ Gitee 已是最新，跳过推送"
+              exit 0
+            fi
+            
+            # 检查是否可以快进合并
+            if git merge-base --is-ancestor gitee/main HEAD; then
+              echo ""
+              echo "✅ 可以快进合并，直接推送"
+              git push gitee ${PUSH_BRANCH}:main
+            else
+              echo ""
+              echo "⚠️  无法快进合并，Gitee 可能有独立提交"
+              echo "🔄 尝试合并 Gitee 的更改..."
+              
+              # 尝试合并（保留 Gitee 上的独立改动）
+              if git merge gitee/main --no-edit -m "Merge Gitee changes before sync"; then
+                echo "✅ 合并成功，推送合并后的结果"
+                git push gitee ${PUSH_BRANCH}:main
+              else
+                echo ""
+                echo "❌ 自动合并失败，存在冲突"
+                echo "🔧 使用策略：优先使用 GitHub 版本"
+                
+                git merge --abort
+                
+                echo "⚠️  使用 --force-with-lease 推送"
+                if git push gitee ${PUSH_BRANCH}:main --force-with-lease; then
+                  echo "✅ 推送成功"
+                else
+                  echo "❌ 推送失败，Gitee 可能有其他人推送的新提交"
+                  exit 1
+                fi
+              fi
+            fi
+          else
+            echo ""
+            echo "⚠️  Gitee 仓库为空，首次推送"
+            git push gitee ${PUSH_BRANCH}:main
+          fi
+          
+          echo ""
+          echo "✅ 同步完成"
+
+      # ========================================
+      # 7. 同步标签（可选）
+      # ========================================
+      - name: Sync Tags to Gitee
         if: success()
         continue-on-error: true
         run: |
           echo "🏷️  同步标签到 Gitee..."
           git push gitee --tags 2>/dev/null || echo "⚠️  没有新标签或推送失败"
-          
-          # 如果需要同步其他分支，取消下面注释
-          # echo ""
-          # echo "🌿 同步其他分支到 Gitee..."
-          # for branch in $(git branch -r | grep -v '\->' | grep 'origin/' | sed 's/origin\///'); do
-          #   if [ "$branch" != "main" ]; then
-          #     echo "  同步分支: $branch"
-          #     git checkout $branch
-          #     git push gitee $branch 2>/dev/null || echo "  ⚠️  分支 $branch 同步失败"
-          #   fi
-          # done
 
       # ========================================
       # 8. 验证同步结果
@@ -221,75 +300,62 @@ jobs:
         run: |
           echo "📊 验证同步结果..."
           
-          # 获取最新的远程信息
           git fetch gitee main
           
           LOCAL_SHA=$(git rev-parse HEAD)
           REMOTE_SHA=$(git rev-parse gitee/main)
           
           echo ""
-          echo "GitHub HEAD: $LOCAL_SHA"
-          echo "Gitee HEAD:  $REMOTE_SHA"
+          echo "本地 HEAD:  $LOCAL_SHA"
+          echo "Gitee HEAD: $REMOTE_SHA"
           
+          # 注意：如果使用了 gitee-patched 分支，SHA 会不同
           if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
             echo ""
-            echo "✅ 同步验证成功！HEAD 一致"
+            echo "✅ 完全同步成功（SHA 一致）"
           else
             echo ""
-            echo "⚠️  HEAD 不一致，但可能是正常情况（如果 Gitee 有独立提交）"
+            echo "ℹ️  SHA 不同（这是正常的，因为 Gitee 版本包含额外的修改）"
+            
+            # 检查提交历史是否包含
+            if git merge-base --is-ancestor main gitee/main; then
+              echo "✅ Gitee 包含了所有 GitHub 的提交"
+            else
+              echo "⚠️  Gitee 可能缺少某些提交"
+            fi
           fi
 
       # ========================================
-      # 9. 清理和摘要
+      # 9. 清理临时分支
       # ========================================
-      - name: Cleanup and Summary
+      - name: Cleanup Temporary Branch
         if: always()
         run: |
-          echo "🧹 清理敏感信息..."
+          echo "🧹 清理临时分支..."
+          
+          # 切回 main 分支
+          git checkout main 2>/dev/null || true
+          
+          # 删除临时分支
+          git branch -D gitee-patched 2>/dev/null || echo "  临时分支不存在，跳过删除"
+          
+          # 删除远程引用
           git remote remove gitee 2>/dev/null || true
           
+          echo "✅ 清理完成"
+
+      # ========================================
+      # 10. 同步摘要
+      # ========================================
+      - name: Sync Summary
+        if: always()
+        run: |
           echo ""
           echo "📊 同步摘要:"
           echo "  GitHub Commit: ${{ github.sha }}"
           echo "  Branch: ${{ github.ref_name }}"
-          echo "  Modified Files: ${{ env.HAS_CHANGES }}"
           echo "  Gitee Existed: ${{ env.GITEE_EXISTS }}"
+          echo "  Gitee Need Patch: ${{ env.GITEE_NEED_PATCH }}"
+          echo "  Has Changes: ${{ env.HAS_CHANGES }}"
           echo ""
           echo "✅ 同步流程完成"
-
-      # ========================================
-      # 10. 可选：定期执行 Gitee GC（仅手动触发）
-      # ========================================
-      - name: Gitee Repository Maintenance (Optional)
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          GITEE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-          GITEE_USERNAME: gloria-chen
-          GITEE_REPO: gloria-chen/repo_test
-        run: |
-          echo "🧹 执行 Gitee 仓库维护（仅手动触发时）..."
-          
-          GITEE_URL="https://${GITEE_USERNAME}:${GITEE_TOKEN}@gitee.com/${GITEE_REPO}.git"
-          
-          # 克隆镜像仓库
-          git clone --mirror "$GITEE_URL" gitee_mirror
-          cd gitee_mirror
-          
-          echo "📊 维护前大小:"
-          du -sh . 2>/dev/null || echo "无法获取大小"
-          
-          # 清理操作
-          git reflog expire --expire=30.days --all
-          git gc --prune=now --aggressive
-          
-          echo ""
-          echo "📊 维护后大小:"
-          du -sh . 2>/dev/null || echo "无法获取大小"
-          
-          # 推送清理后的仓库（非强制）
-          git push --mirror "$GITEE_URL" || echo "⚠️  推送失败"
-          
-          cd ..
-          rm -rf gitee_mirror
-          
-          echo "✅ 维护完成"
