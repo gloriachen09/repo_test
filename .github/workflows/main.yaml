@@ -181,12 +181,11 @@ jobs:
             echo "✅ 修改已提交"
           fi
       
-      # ========================================
-      # 6. 智能同步到 Gitee（避免重复合并）
-      # ========================================
-      - name: Smart Sync to Gitee
+      - name: Smart Sync to Gitee (Single Commit + Preserve History)
         run: |
-          echo "⬆️  开始同步到 Gitee..."
+          echo "⬆️  智能同步到 Gitee..."
+          
+          CURRENT_COMMIT=${{ github.sha }}
           
           # 首次同步
           if [ "$GITEE_EXISTS" != "true" ]; then
@@ -199,93 +198,56 @@ jobs:
             exit 0
           fi
           
-          # 获取提交关系
-          LOCAL_SHA=$(git rev-parse main)
-          GITEE_SHA=$(git rev-parse gitee/main)
+          GITEE_HEAD=$(git rev-parse gitee/main)
           
-          echo "📊 GitHub: $LOCAL_SHA"
-          echo "📊 Gitee:  $GITEE_SHA"
-          
-          # 完全一致，跳过
-          if [ "$LOCAL_SHA" = "$GITEE_SHA" ]; then
-            echo "✅ 已是最新"
+          # 如果已经存在，跳过
+          if git merge-base --is-ancestor $CURRENT_COMMIT gitee/main; then
+            echo "✅ 已存在，跳过"
             exit 0
           fi
           
-          # 可以快进
-          if git merge-base --is-ancestor gitee/main main; then
-            echo "✅ 快进推送"
-            if [ "$NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
-              git checkout gitee-patched
-              git rebase main
-              git push gitee gitee-patched:main --force-with-lease
-              git checkout main
-            else
-              git push gitee main:main
+          # 找出缺失的提交
+          MISSING_COMMITS=$(git log --format=%H $GITEE_HEAD..$CURRENT_COMMIT)
+          
+          # 基于 Gitee HEAD 创建分支
+          git checkout -b temp-gitee $GITEE_HEAD
+          
+          # Cherry-pick 所有缺失的提交
+          for commit in $MISSING_COMMITS; do
+            git cherry-pick $commit || {
+              echo "❌ 冲突: $commit"
+              git cherry-pick --abort
+              exit 1
+            }
+          done
+          
+          # 应用 patch（如果需要）
+          if [ "$NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
+            # 检查文件是否需要修改
+            if [ -f .gitmodules ] && ! grep -q "gitee.com/ameba-aiot" .gitmodules; then
+              sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
             fi
-            exit 0
+            
+            for file in ameba-toolchain-asdk-10.3.1.cmake ameba-toolchain-asdk-12.3.1.cmake; do
+              if [ -f "$file" ] && ! grep -q 'if(1)' "$file"; then
+                sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
+              fi
+            done
+            
+            if ! git diff --quiet; then
+              git add -A
+              git commit --amend --no-edit
+            fi
           fi
           
-          # Gitee 有独立提交，检查是否只是 patch
-          BASE_COMMIT=$(git merge-base main gitee/main)
-          PATCH_COMMITS=$(git log --format=%s $BASE_COMMIT..gitee/main 2>/dev/null | grep -c "chore: apply Gitee-specific patches" || echo "0")
-          TOTAL_COMMITS=$(git log --format=%s $BASE_COMMIT..gitee/main 2>/dev/null | wc -l | tr -d ' ')
+          # 推送
+          git push gitee temp-gitee:main --force-with-lease
           
-          echo "独立提交: $TOTAL_COMMITS 个，其中 patch 提交: $PATCH_COMMITS 个"
+          # 清理
+          git checkout main
+          git branch -D temp-gitee
           
-          # 如果所有独立提交都是 patch，直接覆盖
-          if [ "$TOTAL_COMMITS" -gt 0 ] && [ "$PATCH_COMMITS" -eq "$TOTAL_COMMITS" ]; then
-            echo "✅ 只有 patch 提交，安全覆盖"
-            git checkout -B gitee-patched main
-            
-            if [ "$NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
-              # 重新应用修改（如果需要）
-              if [ -f .gitmodules ] && ! grep -q "gitee.com/ameba-aiot" .gitmodules; then
-                sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
-              fi
-              
-              for file in ameba-toolchain-asdk-10.3.1.cmake ameba-toolchain-asdk-12.3.1.cmake; do
-                if [ -f "$file" ] && ! grep -q 'if(1)' "$file"; then
-                  sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
-                fi
-              done
-              
-              if ! git diff --quiet; then
-                git add -A
-                git commit -m "chore: apply Gitee-specific patches"
-              fi
-            fi
-            
-            git push gitee gitee-patched:main --force-with-lease
-            git checkout main
-          else
-            # 有其他独立提交，创建一次合并
-            echo "⚠️  Gitee 有其他独立提交，创建合并"
-            git checkout -b merge-branch main
-            git merge gitee/main --no-edit -m "Merge Gitee changes"
-            
-            if [ "$NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
-              # 应用 patch
-              if [ -f .gitmodules ] && ! grep -q "gitee.com/ameba-aiot" .gitmodules; then
-                sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
-              fi
-              
-              for file in ameba-toolchain-asdk-10.3.1.cmake ameba-toolchain-asdk-12.3.1.cmake; do
-                if [ -f "$file" ] && ! grep -q 'if(1)' "$file"; then
-                  sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
-                fi
-              done
-              
-              if ! git diff --quiet; then
-                git add -A
-                git commit -m "chore: apply Gitee-specific patches"
-              fi
-            fi
-            
-            git push gitee merge-branch:main --force-with-lease
-            git checkout main
-            git branch -D merge-branch
-          fi
+          echo "✅ 同步完成，Gitee 历史已保留"
 
       # ========================================
       # 7. 同步标签
