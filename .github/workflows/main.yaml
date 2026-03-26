@@ -181,9 +181,12 @@ jobs:
             echo "✅ 修改已提交"
           fi
       
-      - name: Smart Sync to Gitee (Single Commit + Preserve History)
+      # ========================================
+      # 6. 使用 rebase 同步（更简洁）
+      # ========================================
+      - name: Smart Sync to Gitee (Rebase Method)
         run: |
-          echo "⬆️  智能同步到 Gitee..."
+          echo "⬆️  使用 rebase 同步到 Gitee..."
           
           CURRENT_COMMIT=${{ github.sha }}
           
@@ -200,54 +203,58 @@ jobs:
           
           GITEE_HEAD=$(git rev-parse gitee/main)
           
-          # 如果已经存在，跳过
+          # 检查是否已存在
           if git merge-base --is-ancestor $CURRENT_COMMIT gitee/main; then
             echo "✅ 已存在，跳过"
             exit 0
           fi
           
-          # 找出缺失的提交
-          MISSING_COMMITS=$(git log --format=%H $GITEE_HEAD..$CURRENT_COMMIT)
-          
-          # 基于 Gitee HEAD 创建分支
+          # 创建临时分支
           git checkout -b temp-gitee $GITEE_HEAD
           
-          # Cherry-pick 所有缺失的提交
-          for commit in $MISSING_COMMITS; do
-            git cherry-pick $commit || {
-              echo "❌ 冲突: $commit"
-              git cherry-pick --abort
-              exit 1
-            }
-          done
+          # 使用 rebase 将缺失的提交应用到 Gitee HEAD 上
+          echo "🔄 Rebase GitHub 的新提交到 Gitee HEAD..."
           
-          # 应用 patch（如果需要）
-          if [ "$NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
-            # 检查文件是否需要修改
-            if [ -f .gitmodules ] && ! grep -q "gitee.com/ameba-aiot" .gitmodules; then
-              sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
-            fi
+          # 获取需要 rebase 的提交范围
+          if git rebase --onto temp-gitee $GITEE_HEAD $CURRENT_COMMIT; then
+            echo "✅ Rebase 成功"
             
-            for file in ameba-toolchain-asdk-10.3.1.cmake ameba-toolchain-asdk-12.3.1.cmake; do
-              if [ -f "$file" ] && ! grep -q 'if(1)' "$file"; then
-                sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
+            # 应用 patch（如果需要）
+            if [ "$NEED_PATCH" = "true" ] && [ "$HAS_CHANGES" = "true" ]; then
+              # 检查文件
+              NEED_COMMIT=false
+              
+              if [ -f .gitmodules ] && grep -q "github.com/Ameba-AIoT" .gitmodules && ! grep -q "gitee.com/ameba-aiot" .gitmodules; then
+                sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
+                NEED_COMMIT=true
               fi
-            done
-            
-            if ! git diff --quiet; then
-              git add -A
-              git commit --amend --no-edit
+              
+              for file in ameba-toolchain-asdk-10.3.1.cmake ameba-toolchain-asdk-12.3.1.cmake; do
+                if [ -f "$file" ] && grep -q "if(USE_ALIYUN_URL)" "$file" && ! grep -q 'if(1)' "$file"; then
+                  sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
+                  NEED_COMMIT=true
+                fi
+              done
+              
+              if [ "$NEED_COMMIT" = true ]; then
+                git add -A
+                git commit --amend --no-edit
+              fi
             fi
+            
+            # 推送
+            git push gitee temp-gitee:main --force-with-lease
+            echo "✅ 同步完成"
+            
+          else
+            echo "❌ Rebase 失败，存在冲突"
+            git rebase --abort
+            exit 1
           fi
-          
-          # 推送
-          git push gitee temp-gitee:main --force-with-lease
           
           # 清理
           git checkout main
           git branch -D temp-gitee
-          
-          echo "✅ 同步完成，Gitee 历史已保留"
 
       # ========================================
       # 7. 同步标签
