@@ -167,11 +167,11 @@ jobs:
             git add -A
             git commit -m "chore: apply Gitee-specific patches
 
-- Update .gitmodules to use Gitee mirror
-- Force CMake toolchain to use Aliyun source
-
-Note: This branch maintains compatibility with Gitee.
-Base: ${{ github.sha }}"
+              - Update .gitmodules to use Gitee mirror
+              - Force CMake toolchain to use Aliyun source
+              
+              Note: This branch maintains compatibility with Gitee.
+              Base: ${{ github.sha }}"
             
             echo "✅ 修改已提交"
           fi
@@ -281,10 +281,10 @@ Base: ${{ github.sha }}"
                 git add -A
                 git commit -m "chore: apply Gitee-specific patches
 
-- Update .gitmodules to use Gitee mirror
-- Force CMake toolchain to use Aliyun source
-
-Base: $(git rev-parse main)"
+                  - Update .gitmodules to use Gitee mirror
+                  - Force CMake toolchain to use Aliyun source
+                  
+                  Base: $(git rev-parse main)"
               fi
             fi
             
