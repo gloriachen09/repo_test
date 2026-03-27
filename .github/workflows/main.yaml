@@ -112,12 +112,12 @@ jobs:
           
           # 检查并修改 .gitmodules
           if [ -f .gitmodules ]; then
-            if grep -q "github.com/Ameba-AIoT" .gitmodules; then
-              echo "  修改 .gitmodules 使用 Gitee 镜像..."
+            if git show gitee/main:.gitmodules 2>/dev/null | grep -q "gitee.com/ameba-aiot"; then
+              echo "  .gitmodules 已适配，无需修改"
+            else
+			  echo "  修改 .gitmodules 使用 Gitee 镜像..."
               sed -i 's|github.com/Ameba-AIoT|gitee.com/ameba-aiot|g' .gitmodules
               HAS_PATCH=true
-            else
-              echo "  .gitmodules 已适配，无需修改"
             fi
           fi
           
@@ -129,12 +129,12 @@ jobs:
           
           for file in "${CMAKE_FILES[@]}"; do
             if [ -f "$file" ]; then
-              if grep -q "if(USE_ALIYUN_URL)" "$file"; then
-                echo "  修改 $file 使用阿里云源..."
+              if git show "gitee/main:$file" 2>/dev/null | grep -q 'if(1)'; then
+                echo "  $file 已适配，无需修改"
+              else
+				echo "  修改 $file 使用阿里云源..."
                 sed -i 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
                 HAS_PATCH=true
-              else
-                echo "  $file 已适配，无需修改"
               fi
             fi
           done
