@@ -81,39 +81,189 @@ jobs:
           fi
       
       # ========================================
-      # 4. 同步到 Gitee（智能处理）
+      # 4. 应用 Gitee 专用修改（先修改再同步）
+      # ========================================
+      - name: Apply Gitee Patches
+        env:
+          CURRENT_COMMIT: ${{ github.sha }}
+        run: |
+          echo "🔨 应用 Gitee 专用修改"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          START_TIME=$(date +%s)
+          
+          # 创建临时分支（基于当前提交）
+          echo "📝 创建临时分支 temp-sync..."
+          git checkout -b temp-sync $CURRENT_COMMIT
+          
+          # 标记是否有修改
+          HAS_PATCH=false
+          PATCH_FILES=()
+          
+          echo ""
+          echo "🔧 检查并修改文件..."
+          
+          # ========================================
+          # 修改 .gitmodules
+          # ========================================
+          if [ -f .gitmodules ]; then
+            echo ""
+            echo "  📄 处理 .gitmodules..."
+            
+            # 检查当前文件是否需要修改（检查工作区文件，不是 Gitee 上的）
+            if grep -qi "github\.com/Ameba-AIoT" .gitmodules; then
+              echo "    🔄 发现 GitHub URL，替换为 Gitee 镜像..."
+              
+              # 显示修改前的内容
+              echo "    修改前:"
+              grep -i "github\.com/Ameba-AIoT" .gitmodules | sed 's/^/      /'
+              
+              # 执行替换
+              sed -i.bak 's|github\.com/Ameba-AIoT|gitee.com/ameba-aiot|gi' .gitmodules
+              rm -f .gitmodules.bak
+              
+              # 显示修改后的内容
+              echo "    修改后:"
+              grep -i "gitee\.com/ameba-aiot" .gitmodules | sed 's/^/      /'
+              
+              # 验证修改
+              if grep -qi "gitee\.com/ameba-aiot" .gitmodules; then
+                echo "    ✅ 修改成功"
+                HAS_PATCH=true
+                PATCH_FILES+=(".gitmodules")
+              else
+                echo "    ❌ 修改失败"
+                exit 1
+              fi
+            else
+              echo "    ✅ 已使用 Gitee 镜像，无需修改"
+            fi
+          else
+            echo ""
+            echo "  ⏭️  .gitmodules 不存在，跳过"
+          fi
+          
+          # ========================================
+          # 修改 CMake 工具链文件
+          # ========================================
+          CMAKE_FILES=(
+            "ameba-toolchain-asdk-10.3.1.cmake"
+            "ameba-toolchain-asdk-12.3.1.cmake"
+          )
+          
+          echo ""
+          echo "  📄 处理 CMake 工具链文件..."
+          
+          for file in "${CMAKE_FILES[@]}"; do
+            if [ -f "$file" ]; then
+              echo ""
+              echo "    🔍 检查 $file..."
+              
+              # 检查当前文件是否需要修改
+              if grep -q 'if(USE_ALIYUN_URL)' "$file"; then
+                echo "      🔄 发现条件判断，强制使用阿里云源..."
+                
+                # 显示修改前的内容
+                echo "      修改前:"
+                grep -n 'if(USE_ALIYUN_URL)' "$file" | sed 's/^/        /'
+                
+                # 执行替换
+                sed -i.bak 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
+                rm -f "${file}.bak"
+                
+                # 显示修改后的内容
+                echo "      修改后:"
+                grep -n 'if(1)' "$file" | sed 's/^/        /'
+                
+                # 验证修改
+                if grep -q 'if(1)' "$file"; then
+                  echo "      ✅ 修改成功"
+                  HAS_PATCH=true
+                  PATCH_FILES+=("$file")
+                else
+                  echo "      ❌ 修改失败"
+                  exit 1
+                fi
+              else
+                echo "      ✅ 已强制使用阿里云源，无需修改"
+              fi
+            else
+              echo ""
+              echo "    ⏭️  $file 不存在，跳过"
+            fi
+          done
+          
+          # ========================================
+          # 提交修改
+          # ========================================
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          if [ "$HAS_PATCH" = true ]; then
+            echo "✅ 已应用 ${#PATCH_FILES[@]} 个文件的 Gitee 专用修改"
+            echo ""
+            echo "📝 修改的文件:"
+            printf '  - %s\n' "${PATCH_FILES[@]}"
+            
+            # 提交修改
+            git add -A
+            git commit -m "chore: apply Gitee-specific patches"
+            
+            echo ""
+            echo "📊 提交详情:"
+            git show --stat HEAD | sed 's/^/  /'
+            
+            echo "HAS_GITEE_PATCH=true" >> $GITHUB_ENV
+          else
+            echo "✅ 所有文件已适配 Gitee，无需额外修改"
+            echo "HAS_GITEE_PATCH=false" >> $GITHUB_ENV
+          fi
+          
+          END_TIME=$(date +%s)
+          DURATION=$((END_TIME - START_TIME))
+          echo ""
+          echo "⏱️  修改耗时: ${DURATION}秒"
+      
+      # ========================================
+      # 5. 同步到 Gitee
       # ========================================
       - name: Sync to Gitee
         env:
           CURRENT_COMMIT: ${{ github.sha }}
         run: |
-          echo "⬆️  开始同步到 Gitee"
+          echo ""
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "⬆️  同步到 Gitee"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
           START_TIME=$(date +%s)
           
+          echo ""
           echo "📦 提交信息:"
-          echo "  SHA: ${CURRENT_COMMIT:0:8}"
-          echo "  消息: $(git log -1 --format=%s $CURRENT_COMMIT)"
-          echo "  作者: $(git log -1 --format='%an <%ae>' $CURRENT_COMMIT)"
-          echo "  时间: $(git log -1 --format=%ci $CURRENT_COMMIT)"
+          echo "  原始提交: ${CURRENT_COMMIT:0:8}"
+          echo "  当前分支: temp-sync"
+          echo "  是否有补丁: ${{ env.HAS_GITEE_PATCH }}"
           echo ""
           
           # ========================================
           # 场景 1: 首次同步
           # ========================================
           if [ "$GITEE_EXISTS" != "true" ]; then
-            echo "🆕 检测到首次同步"
+            echo "🆕 首次同步到 Gitee"
             echo ""
-            echo "📤 推送到 Gitee..."
+            echo "📤 推送分支..."
             
-            if git push gitee main:main --force 2>&1 | tee /tmp/push.log; then
+            if git push gitee temp-sync:main --force 2>&1 | tee /tmp/push.log; then
               echo ""
               echo "✅ 首次同步成功"
               
               END_TIME=$(date +%s)
               DURATION=$((END_TIME - START_TIME))
-              echo "⏱️  耗时: ${DURATION}秒"
+              echo "⏱️  推送耗时: ${DURATION}秒"
+              
+              # 清理
+              git checkout main 2>/dev/null || true
+              git branch -D temp-sync 2>/dev/null || true
               
               exit 0
             else
@@ -125,174 +275,41 @@ jobs:
           fi
           
           # ========================================
-          # 场景 2: 增量同步 - 检查是否需要更新
+          # 场景 2: 增量同步 - 比较修改后的文件树
           # ========================================
-          echo "🔄 检测到增量同步"
+          echo "🔄 增量同步到 Gitee"
           echo ""
           
-          # 比较文件树
-          echo "🔍 比较文件树..."
-          GITHUB_TREE=$(git ls-tree -r $CURRENT_COMMIT 2>/dev/null | sha256sum | cut -d' ' -f1)
-          GITEE_TREE=$(git ls-tree -r $GITEE_HEAD 2>/dev/null | sha256sum | cut -d' ' -f1)
+          # 获取当前 temp-sync 分支的文件树
+          CURRENT_TREE=$(git ls-tree -r HEAD 2>/dev/null | sha256sum | cut -d' ' -f1)
+          GITEE_TREE=$(git ls-tree -r gitee/main 2>/dev/null | sha256sum | cut -d' ' -f1)
           
-          echo "  GitHub Tree: ${GITHUB_TREE:0:16}..."
-          echo "  Gitee Tree:  ${GITEE_TREE:0:16}..."
+          echo "🔍 比较文件树:"
+          echo "  当前分支: ${CURRENT_TREE:0:16}..."
+          echo "  Gitee:    ${GITEE_TREE:0:16}..."
           
-          if [ "$GITHUB_TREE" = "$GITEE_TREE" ]; then
+          if [ "$CURRENT_TREE" = "$GITEE_TREE" ]; then
             echo ""
-            echo "✅ 文件内容完全相同，无需同步"
+            echo "✅ 文件内容完全相同，无需推送"
             
             END_TIME=$(date +%s)
             DURATION=$((END_TIME - START_TIME))
-            echo "⏱️  耗时: ${DURATION}秒"
+            echo "⏱️  检查耗时: ${DURATION}秒"
+            
+            # 清理
+            git checkout main 2>/dev/null || true
+            git branch -D temp-sync 2>/dev/null || true
             
             exit 0
           fi
           
           echo ""
-          echo "📝 文件内容不同，准备同步..."
+          echo "📝 文件内容不同，准备推送..."
           
-          # 显示差异统计
+          # 显示差异
           echo ""
-          echo "📊 文件差异:"
-          git diff --stat $GITEE_HEAD $CURRENT_COMMIT 2>/dev/null || echo "  (无法生成差异统计)"
-          
-          # ========================================
-          # 创建临时分支并应用 Gitee 专用修改
-          # ========================================
-          echo ""
-          echo "🔨 创建临时分支..."
-          git checkout -b temp-sync $CURRENT_COMMIT
-          
-          # 标记是否有修改
-          HAS_PATCH=false
-          PATCH_FILES=()
-          
-          echo ""
-          echo "🔧 检查是否需要 Gitee 专用修改..."
-          
-          # ----------------------------------------
-          # 检查并修改 .gitmodules
-          # ----------------------------------------
-          if [ -f .gitmodules ]; then
-            echo ""
-            echo "  📄 检查 .gitmodules..."
-            
-            NEEDS_PATCH=false
-            
-            # 检查 Gitee 上是否存在该文件
-            if git show "gitee/main:.gitmodules" >/dev/null 2>&1; then
-              # Gitee 上存在，检查是否已适配
-              if git show "gitee/main:.gitmodules" 2>/dev/null | grep -qi "gitee.com/ameba-aiot"; then
-                echo "    ✅ 已适配 Gitee 镜像"
-              else
-                NEEDS_PATCH=true
-              fi
-            else
-              # Gitee 上不存在，需要修改
-              NEEDS_PATCH=true
-            fi
-            
-            if [ "$NEEDS_PATCH" = true ]; then
-              echo "    🔄 修改为 Gitee 镜像..."
-              
-              # 使用 -i 直接修改，添加 .bak 后缀以兼容 macOS
-              sed -i.bak 's|github\.com/Ameba-AIoT|gitee.com/ameba-aiot|gi' .gitmodules
-              rm -f .gitmodules.bak
-              
-              # 验证修改
-              if grep -qi "gitee.com/ameba-aiot" .gitmodules; then
-                echo "    ✅ 修改成功"
-                HAS_PATCH=true
-                PATCH_FILES+=(".gitmodules")
-              else
-                echo "    ⚠️  修改可能失败，请检查"
-              fi
-            fi
-          else
-            echo ""
-            echo "  ⏭️  .gitmodules 不存在，跳过"
-          fi
-          
-          # ----------------------------------------
-          # 检查并修改 CMake 工具链文件
-          # ----------------------------------------
-          CMAKE_FILES=(
-            "ameba-toolchain-asdk-10.3.1.cmake"
-            "ameba-toolchain-asdk-12.3.1.cmake"
-          )
-          
-          echo ""
-          echo "  📄 检查 CMake 工具链文件..."
-          
-          for file in "${CMAKE_FILES[@]}"; do
-            if [ -f "$file" ]; then
-              echo ""
-              echo "    🔍 检查 $file..."
-              
-              NEEDS_PATCH=false
-              
-              # 检查 Gitee 上是否存在该文件
-              if git show "gitee/main:$file" >/dev/null 2>&1; then
-                # 文件存在，检查内容
-                if git show "gitee/main:$file" 2>/dev/null | grep -q 'if(1)'; then
-                  echo "      ✅ 已强制使用阿里云源"
-                else
-                  NEEDS_PATCH=true
-                fi
-              else
-                # 文件不存在，需要修改
-                NEEDS_PATCH=true
-              fi
-              
-              if [ "$NEEDS_PATCH" = true ]; then
-                echo "      🔄 强制使用阿里云源..."
-                
-                # 修改文件
-                sed -i.bak 's/if(USE_ALIYUN_URL)/if(1)/g' "$file"
-                rm -f "${file}.bak"
-                
-                # 验证修改
-                if grep -q 'if(1)' "$file"; then
-                  echo "      ✅ 修改成功"
-                  HAS_PATCH=true
-                  PATCH_FILES+=("$file")
-                else
-                  echo "      ⚠️  修改可能失败，请检查"
-                fi
-              fi
-            else
-              echo ""
-              echo "    ⏭️  $file 不存在，跳过"
-            fi
-          done
-          
-          # ----------------------------------------
-          # 提交修改
-          # ----------------------------------------
-          if [ "$HAS_PATCH" = true ]; then
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "✅ 应用 Gitee 专用修改"
-            echo ""
-            echo "📝 修改的文件:"
-            printf '  - %s\n' "${PATCH_FILES[@]}"
-            
-            git add -A
-            
-            # 生成详细的提交消息
-            COMMIT_MSG="chore: apply Gitee-specific patches"
-            
-            git commit -m "$COMMIT_MSG"
-            
-            echo ""
-            echo "📊 修改详情:"
-            git show --stat HEAD
-          else
-            echo ""
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "✅ 无需 Gitee 专用修改"
-          fi
+          echo "📊 与 Gitee 的差异:"
+          git diff --stat gitee/main HEAD 2>/dev/null | sed 's/^/  /' || echo "  (无法生成差异统计)"
           
           # ========================================
           # 推送到 Gitee
@@ -302,46 +319,41 @@ jobs:
           echo "📤 推送到 Gitee..."
           echo ""
           
-          # 尝试使用 --force-with-lease
+          PUSH_SUCCESS=false
+          
+          # 优先使用 --force-with-lease
+          echo "🔹 尝试使用 --force-with-lease..."
           if git push gitee temp-sync:main --force-with-lease 2>&1 | tee /tmp/push.log; then
-            echo ""
-            echo "✅ 推送成功（使用 --force-with-lease）"
+            echo "  ✅ 推送成功"
             PUSH_SUCCESS=true
           else
             # 检查是否是 stale info 错误
-            if grep -q "stale info" /tmp/push.log; then
+            if grep -qi "stale\|rejected" /tmp/push.log; then
+              echo "  ⚠️  --force-with-lease 被拒绝"
               echo ""
-              echo "⚠️  检测到远程有新提交，使用 --force 重试..."
+              echo "🔹 使用 --force 重试..."
               
               if git push gitee temp-sync:main --force 2>&1 | tee /tmp/push_force.log; then
-                echo ""
-                echo "✅ 推送成功（使用 --force）"
+                echo "  ✅ 推送成功"
                 PUSH_SUCCESS=true
               else
-                echo ""
-                echo "❌ 推送失败"
+                echo "  ❌ 推送失败"
                 cat /tmp/push_force.log
-                PUSH_SUCCESS=false
               fi
             else
-              echo ""
-              echo "❌ 推送失败"
+              echo "  ❌ 推送失败"
               cat /tmp/push.log
-              PUSH_SUCCESS=false
             fi
           fi
           
           # ========================================
-          # 清理临时分支
+          # 清理和统计
           # ========================================
           echo ""
           echo "🧹 清理临时分支..."
           git checkout main 2>/dev/null || git checkout -b main $CURRENT_COMMIT
           git branch -D temp-sync 2>/dev/null || true
           
-          # ========================================
-          # 统计和总结
-          # ========================================
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           
@@ -350,7 +362,7 @@ jobs:
           
           if [ "$PUSH_SUCCESS" = true ]; then
             echo "✅ 同步完成"
-            echo "⏱️  总耗时: ${DURATION}秒"
+            echo "⏱️  推送耗时: ${DURATION}秒"
             exit 0
           else
             echo "❌ 同步失败"
@@ -359,7 +371,7 @@ jobs:
           fi
       
       # ========================================
-      # 5. 同步标签
+      # 6. 同步标签
       # ========================================
       - name: Sync Tags to Gitee
         if: success()
@@ -368,26 +380,23 @@ jobs:
           echo ""
           echo "🏷️  同步标签到 Gitee..."
           
-          # 获取所有标签
           TAG_COUNT=$(git tag | wc -l)
           
           if [ "$TAG_COUNT" -eq 0 ]; then
-            echo "  ⏭️  没有标签需要同步"
+            echo "  ⏭️  没有标签"
             exit 0
           fi
           
-          echo "  📊 本地标签数: $TAG_COUNT"
+          echo "  📊 标签数: $TAG_COUNT"
           
-          # 尝试推送标签
           if git push gitee --tags --force 2>&1 | tee /tmp/tag_push.log; then
             echo "  ✅ 标签同步成功"
           else
             echo "  ⚠️  标签同步失败（不影响主流程）"
-            cat /tmp/tag_push.log
           fi
 
       # ========================================
-      # 6. 清理远程引用
+      # 7. 清理
       # ========================================
       - name: Cleanup
         if: always()
@@ -398,7 +407,7 @@ jobs:
           echo "✅ 清理完成"
 
       # ========================================
-      # 7. 同步摘要
+      # 8. 同步摘要
       # ========================================
       - name: Sync Summary
         if: always()
@@ -412,39 +421,11 @@ jobs:
           echo "  仓库: ${{ github.repository }}"
           echo "  分支: ${{ github.ref_name }}"
           echo "  提交: ${{ github.sha }}"
-          echo "  触发: ${{ github.event_name }}"
           echo ""
           echo "📍 Gitee 信息:"
           echo "  仓库: gloria-chen/repo_test"
-          echo "  状态: ${{ env.GITEE_EXISTS == 'true' && '已存在' || '首次同步' }}"
+          echo "  状态: ${{ env.GITEE_EXISTS == 'true' && '增量同步' || '首次同步' }}"
+          echo "  补丁: ${{ env.HAS_GITEE_PATCH }}"
           echo ""
           echo "✅ 工作流完成"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-      # ========================================
-      # 8. 失败通知
-      # ========================================
-      - name: Notify on Failure
-        if: failure()
-        run: |
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "❌ 同步失败"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
-          echo "::error::GitHub 到 Gitee 同步失败"
-          echo "::error::Commit: ${{ github.sha }}"
-          echo "::error::请检查日志获取详细信息"
-          echo ""
-          
-          # 输出可能的错误原因
-          echo "🔍 可能的原因:"
-          echo "  1. Gitee Token 过期或权限不足"
-          echo "  2. 网络连接问题"
-          echo "  3. Gitee 仓库不存在或路径错误"
-          echo "  4. Git 冲突或其他异常"
-          echo ""
-          echo "💡 建议:"
-          echo "  1. 检查 secrets.GITCODE_TOKEN 是否正确"
-          echo "  2. 确认 Gitee 仓库路径: gloria-chen/repo_test"
-          echo "  3. 查看上方详细日志"
