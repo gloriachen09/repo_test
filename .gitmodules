@@ -20,25 +20,6 @@
 # This is checked by CI. Also please don't forget to update the submodule version
 # if you are changing the sbom-hash. This is important for SBOM generation.
 
-[submodule "component/audio"]
-	path = component/audio
-	url = https://github.com/Ameba-AIoT/ameba-audio.git
-
-[submodule "component/ui"]
-	path = component/ui
-	url = https://github.com/Ameba-AIoT/ameba-ui.git
-
-[submodule "component/aivoice"]
-	path = component/aivoice
-	url = https://github.com/Ameba-AIoT/ameba-aivoice.git
-[submodule "component/tflite_micro"]
-	path = component/tflite_micro
-	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
-	branch = main
-[submodule "ameba-tflite-micro"]
-	path = ameba-tflite-micro
-	url = https://github.com/Ameba-AIoT/ameba-tflite-micro.git
-	branch = main
 [submodule "test-repo"]
 	path = test-repo
-	url = https://github.com/gloriachen09/test-repo.git
+	url = ../gloriachen09/test-repo.git
