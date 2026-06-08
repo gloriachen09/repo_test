@@ -22,4 +22,4 @@
 
 [submodule "test-repo"]
 	path = test-repo
-	url = ../gloriachen09/test-repo.git
+	url = ../test-repo.git
