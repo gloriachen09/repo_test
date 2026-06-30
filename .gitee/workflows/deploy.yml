@@ -1,0 +1,18 @@
+name: Deploy to CloudBase Static Hosting
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  multi-platform-builds: 
+    uses: ./.github/workflows/ameba_cross_build_template.yml
+    strategy:
+      matrix:
+        ic: [amebalite, amebasmart, amebadplus, amebagreen2, RTL8720F]
+        build_stage_suffix: [B0, B1, B2, B3, B4, B5]
+    with:
+      ic_name: ${{ matrix.ic }}
+      build_stage_name: ${{ matrix.build_stage_suffix }}
+    secrets: inherit
